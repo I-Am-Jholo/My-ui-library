@@ -6,9 +6,12 @@
 ╚█████╔╝██║  ██║╚██████╔╝███████╗╚██████╔╝    ███████╗██║██████╔╝
  ╚════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝ ╚═════╝     ╚══════╝╚═╝╚═════╝ 
  
-   Jholo UI Library v1.1  |  Fixed & Optimized
+   Jholo UI Library v1.1  |  Reusable • Modular • Clean
 ]=]
 
+-- ============================================================
+-- SERVICES
+-- ============================================================
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -46,11 +49,18 @@ local Theme = {
     Text_Input     = Color3.fromRGB(200, 240, 200),
     Text_Placeholder = Color3.fromRGB(80, 120, 80),
 
+    Stroke_GradA   = Color3.fromRGB(255, 0, 0),
+    Stroke_GradB   = Color3.fromRGB(238, 255, 0),
+
     Corner_Main    = UDim.new(0, 10),
     Corner_Elem    = UDim.new(0, 6),
     Corner_Small   = UDim.new(0, 4),
 
-    TweenInfo_Fast   = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    TweenInfo_Fast   = TweenInfo.new(0.15, Enum.EasingStyle.Quad,        Enum.EasingDirection.Out),
+    TweenInfo_Medium = TweenInfo.new(0.25, Enum.EasingStyle.Quad,        Enum.EasingDirection.Out),
+    TweenInfo_Slow   = TweenInfo.new(0.40, Enum.EasingStyle.Quad,        Enum.EasingDirection.Out),
+    TweenInfo_Open   = TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
+    TweenInfo_Close  = TweenInfo.new(0.30, Enum.EasingStyle.Quad,        Enum.EasingDirection.Out),
 }
 
 -- ============================================================
@@ -58,30 +68,105 @@ local Theme = {
 -- ============================================================
 local Util = {}
 
+function Util.tween(obj, info, props)
+    TweenService:Create(obj, info, props):Play()
+end
+
 function Util.new(class, parent, props)
     local inst = Instance.new(class)
-    for k, v in pairs(props or {}) do inst[k] = v end
+    for k, v in pairs(props or {}) do
+        inst[k] = v
+    end
     if parent then inst.Parent = parent end
     return inst
 end
 
+function Util.corner(parent, radius)
+    return Util.new("UICorner", parent, { CornerRadius = radius or Theme.Corner_Elem })
+end
+
+function Util.stroke(parent, color, thickness)
+    return Util.new("UIStroke", parent, {
+        Color     = color or Theme.Stroke_Elem,
+        Thickness = thickness or 1.5,
+    })
+end
+
+function Util.padding(parent, top, bottom, left, right)
+    return Util.new("UIPadding", parent, {
+        PaddingTop    = UDim.new(0, top    or 0),
+        PaddingBottom = UDim.new(0, bottom or 0),
+        PaddingLeft   = UDim.new(0, left   or 0),
+        PaddingRight  = UDim.new(0, right  or 0),
+    })
+end
+
+function Util.listLayout(parent, padding, halign, valign)
+    return Util.new("UIListLayout", parent, {
+        Padding             = UDim.new(0, padding or 6),
+        HorizontalAlignment = halign or Enum.HorizontalAlignment.Center,
+        VerticalAlignment   = valign or Enum.VerticalAlignment.Top,
+        SortOrder           = Enum.SortOrder.LayoutOrder,
+    })
+end
+
+local function fadeDescendants(frame, targetT, tweenInfo)
+    for _, obj in ipairs(frame:GetDescendants()) do
+        if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+            TweenService:Create(obj, tweenInfo, { BackgroundTransparency = targetT }):Play()
+        elseif obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+            TweenService:Create(obj, tweenInfo, { TextTransparency = targetT, BackgroundTransparency = targetT }):Play()
+        elseif obj:IsA("UIStroke") then
+            TweenService:Create(obj, tweenInfo, { Transparency = targetT }):Play()
+        end
+    end
+end
+
+local function resetTransparencies(frame)
+    for _, obj in ipairs(frame:GetDescendants()) do
+        if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+            obj.BackgroundTransparency = 0
+        elseif obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+            obj.TextTransparency       = 0
+            obj.BackgroundTransparency = 0
+        elseif obj:IsA("UIStroke") then
+            obj.Transparency = 0
+        end
+    end
+end
+
 function Util.makeDraggable(frame, handle)
     handle = handle or frame
-    local dragging, dragInput, mousePos, framePos
+    local dragging, dragInput, mousePos, framePos = false, nil, nil, nil
+
     handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             mousePos = input.Position
             framePos = frame.Position
             input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
             end)
         end
     end)
+
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if input == dragInput and dragging then
             local delta = input.Position - mousePos
-            frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
+            frame.Position = UDim2.new(
+                framePos.X.Scale, framePos.X.Offset + delta.X,
+                framePos.Y.Scale, framePos.Y.Offset + delta.Y
+            )
         end
     end)
 end
@@ -94,66 +179,839 @@ JholoLib.__index = JholoLib
 
 function JholoLib.new(config)
     config = config or {}
-    local self = setmetatable({}, JholoLib)
-    self.Title = config.Title or "Jholo Hub"
-    self._visible = true
+    local self      = setmetatable({}, JholoLib)
+    self.Title      = config.Title    or "Jholo Hub"
+    self._openSize  = config.Size     or UDim2.new(0.67417, 0, 0.83518, 0)
+    self._openPos   = config.Position or UDim2.new(0.16569, 0, 0.04792, 0)
+    self._tabs      = {}
+    self._activeTab = nil
+    self._visible   = true
+    self._animating = false
 
     -- ScreenGui
     self.ScreenGui = Util.new("ScreenGui", PlayerGui, {
-        Name = "JholoLib_" .. self.Title,
-        ResetOnSpawn = false,
+        Name           = "JholoLib_" .. self.Title,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        ResetOnSpawn   = false,
     })
 
-    -- Main Frame
-    self.Main = Util.new("Frame", self.ScreenGui, {
-        Name = "Main",
-        Size = config.Size or UDim2.new(0, 500, 0, 350),
-        Position = config.Position or UDim2.new(0.5, -250, 0.5, -175),
-        BackgroundColor3 = Theme.BG_Main,
-        BorderSizePixel = 0,
-    })
-    Util.new("UICorner", self.Main, {CornerRadius = Theme.Corner_Main})
-    Util.new("UIStroke", self.Main, {Color = Theme.Stroke_Main, Thickness = 2})
-
-    -- Header / Drag Handle
-    self.Header = Util.new("Frame", self.Main, {
-        Name = "Header",
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundTransparency = 1,
-    })
-    
-    self.TitleLabel = Util.new("TextLabel", self.Header, {
-        Text = self.Title,
-        Size = UDim2.new(1, -20, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
-        BackgroundTransparency = 1,
-        TextColor3 = Theme.Text_Title,
-        TextSize = 18,
-        Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.HorizontalAlignment.Left,
-    })
-
-    Util.makeDraggable(self.Main, self.Header)
-
-    -- Toggle Button Logic
+    -- ============================================================
+    -- Toggle Button
+    -- ============================================================
     self._toggleBtn = Util.new("TextButton", self.ScreenGui, {
-        Name = "ToggleBtn",
-        Size = UDim2.new(0, 100, 0, 30),
-        Position = UDim2.new(0.5, -50, 0, 10),
-        BackgroundColor3 = Theme.BG_Panel,
-        Text = "Toggle UI",
-        TextColor3 = Theme.Text_Primary,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 14,
+        Name             = "ToggleBtn",
+        Size             = UDim2.new(0, 120, 0, 32),
+        Position         = UDim2.new(0.5, -60, 0, 8),
+        BackgroundColor3 = Theme.BG_Main,
+        TextColor3       = Color3.fromRGB(220, 220, 80),
+        Text             = self.Title,
+        TextSize         = 13,
+        Font             = Enum.Font.GothamBold,
+        BorderSizePixel  = 0,
+        AutoButtonColor  = false,
+        ZIndex           = 10,
     })
-    Util.new("UICorner", self._toggleBtn, {CornerRadius = Theme.Corner_Small})
-    
+    Util.corner(self._toggleBtn, UDim.new(0, 8))
+
+    local togStroke = Util.stroke(self._toggleBtn, Theme.Stroke_Main, 2.5)
+    local togGrad   = Util.new("UIGradient", togStroke, {
+        Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0.000, Theme.Stroke_GradA),
+            ColorSequenceKeypoint.new(0.548, Theme.Stroke_GradB),
+            ColorSequenceKeypoint.new(1.000, Theme.Stroke_GradB),
+        }
+    })
+
     self._toggleBtn.MouseButton1Click:Connect(function()
-        self._visible = not self._visible
-        self.Main.Visible = self._visible
+        self:toggle()
     end)
+
+    -- ============================================================
+    -- Main Frame
+    -- ============================================================
+    self.MainFrame = Util.new("Frame", self.ScreenGui, {
+        Name             = "MainFrame",
+        BorderSizePixel  = 0,
+        BackgroundColor3 = Theme.BG_Main,
+        Size             = self._openSize,
+        Position         = self._openPos,
+    })
+    Util.corner(self.MainFrame, Theme.Corner_Main)
+    Util.new("UIAspectRatioConstraint", self.MainFrame, { AspectRatio = 1.93443 })
+
+    local mainStroke = Util.stroke(self.MainFrame, Theme.Stroke_Main, 3)
+    local grad = Util.new("UIGradient", mainStroke, {
+        Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0.000, Theme.Stroke_GradA),
+            ColorSequenceKeypoint.new(0.548, Theme.Stroke_GradB),
+            ColorSequenceKeypoint.new(1.000, Theme.Stroke_GradB),
+        }
+    })
+
+    RunService.Heartbeat:Connect(function()
+        local r = (tick() * 40) % 360
+        grad.Rotation    = r
+        togGrad.Rotation = r
+    end)
+
+    -- ============================================================
+    -- Title Bar
+    -- ============================================================
+    self.TitleBar = Util.new("Frame", self.MainFrame, {
+        Name             = "TitleBar",
+        BorderSizePixel  = 0,
+        BackgroundColor3 = Color3.fromRGB(8, 14, 8),
+        Size             = UDim2.new(1, 0, 0.13, 0),
+        Position         = UDim2.new(0, 0, 0, 0),
+    })
+    Util.new("UICorner", self.TitleBar, { CornerRadius = UDim.new(0, 10) })
+
+    self.TitleLabel = Util.new("TextLabel", self.TitleBar, {
+        Name                   = "TitleLabel",
+        BorderSizePixel        = 0,
+        TextSize               = 18,
+        Font                   = Enum.Font.GothamBold,
+        TextColor3             = Theme.Text_Title,
+        BackgroundTransparency = 1,
+        Size                   = UDim2.new(1, -80, 1, 0),
+        Position               = UDim2.new(0, 12, 0, 0),
+        Text                   = self.Title,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+    })
+
+    -- Close Button
+    self._closeBtn = Util.new("TextButton", self.TitleBar, {
+        Name             = "CloseBtn",
+        Text             = "✕",
+        TextSize         = 14,
+        Font             = Enum.Font.GothamBold,
+        TextColor3       = Color3.fromRGB(255, 100, 100),
+        BackgroundColor3 = Color3.fromRGB(60, 20, 20),
+        Size             = UDim2.new(0, 28, 0, 22),
+        Position         = UDim2.new(1, -34, 0.5, -11),
+        BorderSizePixel  = 0,
+        AutoButtonColor  = false,
+    })
+    Util.corner(self._closeBtn, UDim.new(0, 4))
+    self._closeBtn.MouseButton1Click:Connect(function() self:toggle() end)
+
+    -- Minimize Button
+    self._minBtn = Util.new("TextButton", self.TitleBar, {
+        Name             = "MinBtn",
+        Text             = "−",
+        TextSize         = 16,
+        Font             = Enum.Font.GothamBold,
+        TextColor3       = Color3.fromRGB(255, 220, 50),
+        BackgroundColor3 = Color3.fromRGB(55, 50, 10),
+        Size             = UDim2.new(0, 28, 0, 22),
+        Position         = UDim2.new(1, -66, 0.5, -11),
+        BorderSizePixel  = 0,
+        AutoButtonColor  = false,
+    })
+    Util.corner(self._minBtn, UDim.new(0, 4))
+
+    local minimized = false
+    self._minBtn.MouseButton1Click:Connect(function()
+        if self._animating then return end
+        minimized = not minimized
+        if minimized then
+            Util.tween(self.MainFrame, Theme.TweenInfo_Medium, { Size = UDim2.new(self._openSize.X.Scale, 0, 0.10, 0) })
+            self.TabsPanel.Visible    = false
+            self.ContentPanel.Visible = false
+        else
+            Util.tween(self.MainFrame, Theme.TweenInfo_Medium, { Size = self._openSize })
+            self.TabsPanel.Visible    = true
+            self.ContentPanel.Visible = true
+        end
+    end)
+
+    Util.makeDraggable(self.MainFrame, self.TitleBar)
+
+    -- ============================================================
+    -- Tabs Panel
+    -- ============================================================
+    self.TabsPanel = Util.new("Frame", self.MainFrame, {
+        Name             = "TabsPanel",
+        BorderSizePixel  = 0,
+        BackgroundColor3 = Theme.BG_Panel,
+        Size             = UDim2.new(0.19915, 0, 0.85, 0),
+        Position         = UDim2.new(0.02542, 0, 0.14, 0),
+    })
+    Util.corner(self.TabsPanel, UDim.new(0, 8))
+
+    self.TabsScroll = Util.new("ScrollingFrame", self.TabsPanel, {
+        BorderSizePixel            = 0,
+        BackgroundTransparency     = 1,
+        ScrollBarImageTransparency = 1,
+        ScrollBarThickness         = 0,
+        Size                       = UDim2.new(1, 0, 1, 0),
+        CanvasSize                 = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize        = Enum.AutomaticSize.Y,
+    })
+    Util.listLayout(self.TabsScroll, 6, Enum.HorizontalAlignment.Center)
+    Util.padding(self.TabsScroll, 8, 8, 0, 0)
+
+    -- ============================================================
+    -- Content Panel
+    -- ============================================================
+    self.ContentPanel = Util.new("Frame", self.MainFrame, {
+        Name             = "ContentPanel",
+        BorderSizePixel  = 0,
+        BackgroundColor3 = Theme.BG_Panel,
+        Size             = UDim2.new(0.75186, 0, 0.85, 0),
+        Position         = UDim2.new(0.23153, 0, 0.14, 0),
+    })
+    Util.corner(self.ContentPanel, UDim.new(0, 8))
+
+    -- ============================================================
+    -- Notification Container
+    -- ============================================================
+    self._notifContainer = Util.new("Frame", self.ScreenGui, {
+        Name                   = "NotifContainer",
+        BackgroundTransparency = 1,
+        BorderSizePixel        = 0,
+        Size                   = UDim2.new(0, 260, 1, 0),
+        Position               = UDim2.new(1, -270, 0, 0),
+        AnchorPoint            = Vector2.new(0, 0),
+    })
+    Util.new("UIListLayout", self._notifContainer, {
+        Padding             = UDim.new(0, 6),
+        VerticalAlignment   = Enum.VerticalAlignment.Bottom,
+        HorizontalAlignment = Enum.HorizontalAlignment.Right,
+        SortOrder           = Enum.SortOrder.LayoutOrder,
+    })
+    Util.padding(self._notifContainer, 0, 12, 0, 0)
 
     return self
 end
 
+-- ============================================================
+-- OPEN / CLOSE / TOGGLE
+-- ============================================================
+function JholoLib:open()
+    if self._animating then return end
+    self._animating = true
+    self._visible   = true
+
+    resetTransparencies(self.MainFrame)
+    self.MainFrame.BackgroundTransparency = 0
+    self.MainFrame.Visible  = true
+    self.MainFrame.Size     = UDim2.new(0, 10, 0, 10)
+    self.MainFrame.Position = UDim2.new(0.5, -5, 0.5, -5)
+
+    local tween = TweenService:Create(self.MainFrame, Theme.TweenInfo_Open, {
+        Size     = self._openSize,
+        Position = self._openPos,
+    })
+    tween:Play()
+    tween.Completed:Connect(function()
+        self._animating = false
+    end)
+end
+
+function JholoLib:close()
+    if self._animating then return end
+    self._animating = true
+    self._visible   = false
+
+    local bgTween = TweenService:Create(self.MainFrame, Theme.TweenInfo_Close, {
+        BackgroundTransparency = 1,
+    })
+    fadeDescendants(self.MainFrame, 1, Theme.TweenInfo_Close)
+    bgTween:Play()
+    bgTween.Completed:Connect(function()
+        self.MainFrame.Visible = false
+        resetTransparencies(self.MainFrame)
+        self._animating = false
+    end)
+end
+
+function JholoLib:toggle()
+    if self._visible then self:close() else self:open() end
+end
+
+function JholoLib:setVisible(state)
+    if state then self:open() else self:close() end
+end
+
+-- ============================================================
+-- SELECT TAB
+-- ============================================================
+function JholoLib:selectTab(name)
+    for tabName, data in pairs(self._tabs) do
+        local active = (tabName == name)
+        data.page.Visible = active
+        Util.tween(data.btn, Theme.TweenInfo_Fast, {
+            BackgroundColor3 = active and Theme.BG_Active   or Theme.BG_Element,
+            TextColor3       = active and Theme.Text_Active or Theme.Text_Muted,
+        })
+    end
+    self._activeTab = name
+end
+
+-- ============================================================
+-- TABS
+-- ============================================================
+function JholoLib:addTab(name, icon)
+    icon = icon or ""
+
+    local btn = Util.new("TextButton", self.TabsScroll, {
+        Name             = name .. "Tab",
+        Size             = UDim2.new(0.88, 0, 0, 36),
+        BackgroundColor3 = Theme.BG_Element,
+        TextColor3       = Theme.Text_Muted,
+        Text             = (icon ~= "" and icon .. "  " or "") .. name,
+        TextSize         = 12,
+        Font             = Enum.Font.GothamSemibold,
+        BorderSizePixel  = 0,
+        AutoButtonColor  = false,
+        TextXAlignment   = Enum.TextXAlignment.Center,
+    })
+    Util.corner(btn, Theme.Corner_Elem)
+
+    local page = Util.new("ScrollingFrame", self.ContentPanel, {
+        Name                       = name .. "Page",
+        Size                       = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency     = 1,
+        BorderSizePixel            = 0,
+        ScrollBarImageTransparency = 1,
+        ScrollBarThickness         = 4,
+        ScrollBarImageColor3       = Color3.fromRGB(60, 160, 60),
+        CanvasSize                 = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize        = Enum.AutomaticSize.Y,
+        Visible                    = false,
+    })
+    Util.listLayout(page, 8, Enum.HorizontalAlignment.Center)
+    Util.padding(page, 10, 14, 0, 0)
+
+    local tabData = { btn = btn, page = page, name = name }
+    self._tabs[name] = tabData
+
+    btn.MouseButton1Click:Connect(function() self:selectTab(name) end)
+    btn.MouseEnter:Connect(function()
+        if self._activeTab ~= name then
+            Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_ElementHov })
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if self._activeTab ~= name then
+            Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Element })
+        end
+    end)
+
+    if not self._activeTab then
+        self:selectTab(name)
+    end
+
+    -- Tab chaining API
+    local Tab  = {}
+    Tab._page  = page
+    Tab._lib   = self
+
+    function Tab:addButton(label, callback)
+        return self._lib:addButton(self._page, label, callback)
+    end
+    function Tab:addToggle(label, default, callback)
+        return self._lib:addToggle(self._page, label, default, callback)
+    end
+    function Tab:addSlider(label, min, max, default, callback)
+        return self._lib:addSlider(self._page, label, min, max, default, callback)
+    end
+    function Tab:addDropdown(label, options, callback)
+        return self._lib:addDropdown(self._page, label, options, callback)
+    end
+    function Tab:addInput(label, placeholder, callback)
+        return self._lib:addInput(self._page, label, placeholder, callback)
+    end
+    function Tab:addLabel(text)
+        return self._lib:addLabel(self._page, text)
+    end
+    function Tab:addSeparator()
+        return self._lib:addSeparator(self._page)
+    end
+    function Tab:addSection(title)
+        return self._lib:addSection(self._page, title)
+    end
+
+    return Tab
+end
+
+-- ============================================================
+-- BUTTON
+-- ============================================================
+function JholoLib:addButton(page, label, callback)
+    local btn = Util.new("TextButton", page, {
+        Size             = UDim2.new(0.93, 0, 0, 34),
+        BackgroundColor3 = Theme.BG_Element,
+        TextColor3       = Theme.Text_Primary,
+        Text             = label,
+        TextSize         = 13,
+        Font             = Enum.Font.GothamSemibold,
+        BorderSizePixel  = 0,
+        AutoButtonColor  = false,
+    })
+    Util.corner(btn, Theme.Corner_Elem)
+    Util.stroke(btn, Theme.Stroke_Elem, 1)
+
+    btn.MouseEnter:Connect(function()
+        Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_ElementHov })
+    end)
+    btn.MouseLeave:Connect(function()
+        Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Element })
+    end)
+    btn.MouseButton1Click:Connect(function()
+        Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Active })
+        task.delay(0.15, function()
+            Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Element })
+        end)
+        if callback then callback() end
+    end)
+
+    return btn
+end
+
+-- ============================================================
+-- TOGGLE
+-- ============================================================
+function JholoLib:addToggle(page, label, default, callback)
+    local state = default or false
+
+    local row = Util.new("Frame", page, {
+        Size             = UDim2.new(0.93, 0, 0, 34),
+        BackgroundColor3 = Theme.BG_Element,
+        BorderSizePixel  = 0,
+    })
+    Util.corner(row, Theme.Corner_Elem)
+    Util.stroke(row, Theme.Stroke_Elem, 1)
+
+    Util.new("TextLabel", row, {
+        Size                   = UDim2.new(1, -56, 1, 0),
+        Position               = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Label,
+        Text                   = label,
+        TextSize               = 13,
+        Font                   = Enum.Font.Gotham,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+    })
+
+    local track = Util.new("Frame", row, {
+        Size             = UDim2.new(0, 40, 0, 20),
+        Position         = UDim2.new(1, -48, 0.5, -10),
+        BackgroundColor3 = state and Theme.BG_Toggle_On or Theme.BG_Toggle_Off,
+        BorderSizePixel  = 0,
+    })
+    Util.corner(track, UDim.new(1, 0))
+
+    local knob = Util.new("Frame", track, {
+        Size             = UDim2.new(0, 14, 0, 14),
+        Position         = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel  = 0,
+    })
+    Util.corner(knob, UDim.new(1, 0))
+
+    local function updateVisual()
+        Util.tween(track, Theme.TweenInfo_Fast, {
+            BackgroundColor3 = state and Theme.BG_Toggle_On or Theme.BG_Toggle_Off,
+        })
+        Util.tween(knob, Theme.TweenInfo_Fast, {
+            Position = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
+        })
+    end
+
+    local btn = Util.new("TextButton", row, {
+        Size                   = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text                   = "",
+        BorderSizePixel        = 0,
+    })
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        updateVisual()
+        if callback then callback(state) end
+    end)
+
+    -- Return control object
+    local ctrl = {}
+    function ctrl:set(val)
+        state = val
+        updateVisual()
+        if callback then callback(state) end
+    end
+    function ctrl:get() return state end
+    return ctrl
+end
+
+-- ============================================================
+-- SLIDER
+-- ============================================================
+function JholoLib:addSlider(page, label, min, max, default, callback)
+    min     = min     or 0
+    max     = max     or 100
+    default = default or min
+    local value = math.clamp(default, min, max)
+
+    local row = Util.new("Frame", page, {
+        Size             = UDim2.new(0.93, 0, 0, 50),
+        BackgroundColor3 = Theme.BG_Element,
+        BorderSizePixel  = 0,
+    })
+    Util.corner(row, Theme.Corner_Elem)
+    Util.stroke(row, Theme.Stroke_Elem, 1)
+
+    local lbl = Util.new("TextLabel", row, {
+        Size                   = UDim2.new(1, -10, 0, 20),
+        Position               = UDim2.new(0, 10, 0, 6),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Label,
+        Text                   = label .. ": " .. tostring(math.round(value)),
+        TextSize               = 12,
+        Font                   = Enum.Font.Gotham,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+    })
+
+    local track = Util.new("Frame", row, {
+        Size             = UDim2.new(1, -20, 0, 8),
+        Position         = UDim2.new(0, 10, 0, 32),
+        BackgroundColor3 = Theme.BG_Slider,
+        BorderSizePixel  = 0,
+    })
+    Util.corner(track, UDim.new(1, 0))
+
+    local fill = Util.new("Frame", track, {
+        Size             = UDim2.new((value - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = Theme.BG_SliderFill,
+        BorderSizePixel  = 0,
+    })
+    Util.corner(fill, UDim.new(1, 0))
+
+    local function updateSlider(input)
+        local trackPos  = track.AbsolutePosition.X
+        local trackSize = track.AbsoluteSize.X
+        local rel       = math.clamp((input.Position.X - trackPos) / trackSize, 0, 1)
+        value = math.round(min + (max - min) * rel)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        lbl.Text  = label .. ": " .. tostring(value)
+        if callback then callback(value) end
+    end
+
+    local dragging = false
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            updateSlider(input)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            updateSlider(input)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    local ctrl = {}
+    function ctrl:set(val)
+        value     = math.clamp(val, min, max)
+        local rel = (value - min) / (max - min)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        lbl.Text  = label .. ": " .. tostring(math.round(value))
+        if callback then callback(value) end
+    end
+    function ctrl:get() return value end
+    return ctrl
+end
+
+-- ============================================================
+-- DROPDOWN
+-- ============================================================
+function JholoLib:addDropdown(page, label, options, callback)
+    options = options or {}
+    local selected = options[1] or "None"
+    local open     = false
+
+    local wrapper = Util.new("Frame", page, {
+        Size             = UDim2.new(0.93, 0, 0, 34),
+        BackgroundTransparency = 1,
+        BorderSizePixel  = 0,
+        ClipsDescendants = false,
+    })
+
+    local header = Util.new("TextButton", wrapper, {
+        Size             = UDim2.new(1, 0, 0, 34),
+        BackgroundColor3 = Theme.BG_Element,
+        TextColor3       = Theme.Text_Primary,
+        Text             = label .. ": " .. selected,
+        TextSize         = 12,
+        Font             = Enum.Font.Gotham,
+        BorderSizePixel  = 0,
+        AutoButtonColor  = false,
+        TextXAlignment   = Enum.TextXAlignment.Left,
+    })
+    Util.corner(header, Theme.Corner_Elem)
+    Util.stroke(header, Theme.Stroke_Elem, 1)
+    Util.padding(header, 0, 0, 10, 0)
+
+    -- Arrow indicator
+    local arrow = Util.new("TextLabel", header, {
+        Size                   = UDim2.new(0, 20, 1, 0),
+        Position               = UDim2.new(1, -24, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Muted,
+        Text                   = "▾",
+        TextSize               = 14,
+        Font                   = Enum.Font.GothamBold,
+    })
+
+    local listFrame = Util.new("Frame", wrapper, {
+        Size             = UDim2.new(1, 0, 0, 0),
+        Position         = UDim2.new(0, 0, 0, 36),
+        BackgroundColor3 = Theme.BG_Dropdown,
+        BorderSizePixel  = 0,
+        ClipsDescendants = true,
+        ZIndex           = 5,
+        Visible          = false,
+    })
+    Util.corner(listFrame, Theme.Corner_Elem)
+    Util.stroke(listFrame, Theme.Stroke_Elem, 1)
+
+    local listLayout = Util.listLayout(listFrame, 2, Enum.HorizontalAlignment.Center)
+    Util.padding(listFrame, 4, 4, 0, 0)
+
+    local optionBtns = {}
+    for _, opt in ipairs(options) do
+        local ob = Util.new("TextButton", listFrame, {
+            Size             = UDim2.new(0.94, 0, 0, 28),
+            BackgroundColor3 = Theme.BG_Element,
+            TextColor3       = Theme.Text_Primary,
+            Text             = opt,
+            TextSize         = 12,
+            Font             = Enum.Font.Gotham,
+            BorderSizePixel  = 0,
+            AutoButtonColor  = false,
+            ZIndex           = 6,
+        })
+        Util.corner(ob, Theme.Corner_Small)
+        ob.MouseEnter:Connect(function()
+            Util.tween(ob, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_ElementHov })
+        end)
+        ob.MouseLeave:Connect(function()
+            Util.tween(ob, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Element })
+        end)
+        ob.MouseButton1Click:Connect(function()
+            selected    = opt
+            header.Text = label .. ": " .. selected
+            open = false
+            Util.tween(listFrame, Theme.TweenInfo_Fast, { Size = UDim2.new(1, 0, 0, 0) })
+            task.delay(0.15, function() listFrame.Visible = false end)
+            arrow.Text = "▾"
+            if callback then callback(selected) end
+        end)
+        table.insert(optionBtns, ob)
+    end
+
+    local listHeight = #options * 30 + 8
+
+    header.MouseButton1Click:Connect(function()
+        open = not open
+        if open then
+            listFrame.Visible = true
+            listFrame.Size    = UDim2.new(1, 0, 0, 0)
+            Util.tween(listFrame, Theme.TweenInfo_Medium, { Size = UDim2.new(1, 0, 0, listHeight) })
+            arrow.Text = "▴"
+            wrapper.Size = UDim2.new(0.93, 0, 0, 34 + listHeight + 4)
+        else
+            Util.tween(listFrame, Theme.TweenInfo_Fast, { Size = UDim2.new(1, 0, 0, 0) })
+            task.delay(0.15, function() listFrame.Visible = false end)
+            arrow.Text   = "▾"
+            wrapper.Size = UDim2.new(0.93, 0, 0, 34)
+        end
+    end)
+
+    local ctrl = {}
+    function ctrl:set(val)
+        selected    = val
+        header.Text = label .. ": " .. selected
+        if callback then callback(selected) end
+    end
+    function ctrl:get() return selected end
+    return ctrl
+end
+
+-- ============================================================
+-- INPUT BOX
+-- ============================================================
+function JholoLib:addInput(page, label, placeholder, callback)
+    placeholder = placeholder or ""
+
+    local row = Util.new("Frame", page, {
+        Size             = UDim2.new(0.93, 0, 0, 52),
+        BackgroundColor3 = Theme.BG_Element,
+        BorderSizePixel  = 0,
+    })
+    Util.corner(row, Theme.Corner_Elem)
+    Util.stroke(row, Theme.Stroke_Elem, 1)
+
+    Util.new("TextLabel", row, {
+        Size                   = UDim2.new(1, -10, 0, 18),
+        Position               = UDim2.new(0, 10, 0, 4),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Label,
+        Text                   = label,
+        TextSize               = 11,
+        Font                   = Enum.Font.Gotham,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+    })
+
+    local box = Util.new("TextBox", row, {
+        Size                   = UDim2.new(1, -16, 0, 22),
+        Position               = UDim2.new(0, 8, 0, 24),
+        BackgroundColor3       = Theme.BG_Input,
+        TextColor3             = Theme.Text_Input,
+        PlaceholderText        = placeholder,
+        PlaceholderColor3      = Theme.Text_Placeholder,
+        Text                   = "",
+        TextSize               = 12,
+        Font                   = Enum.Font.Gotham,
+        BorderSizePixel        = 0,
+        ClearTextOnFocus       = false,
+    })
+    Util.corner(box, Theme.Corner_Small)
+    Util.stroke(box, Theme.Stroke_Input, 1)
+    Util.padding(box, 0, 0, 6, 0)
+
+    box.FocusLost:Connect(function(enterPressed)
+        if callback then callback(box.Text, enterPressed) end
+    end)
+
+    local ctrl = {}
+    function ctrl:get() return box.Text end
+    function ctrl:set(val) box.Text = val end
+    return ctrl
+end
+
+-- ============================================================
+-- LABEL
+-- ============================================================
+function JholoLib:addLabel(page, text)
+    local lbl = Util.new("TextLabel", page, {
+        Size                   = UDim2.new(0.93, 0, 0, 24),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Muted,
+        Text                   = text,
+        TextSize               = 12,
+        Font                   = Enum.Font.Gotham,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+        BorderSizePixel        = 0,
+    })
+    Util.padding(lbl, 0, 0, 6, 0)
+
+    local ctrl = {}
+    function ctrl:set(val) lbl.Text = val end
+    function ctrl:get() return lbl.Text end
+    return ctrl
+end
+
+-- ============================================================
+-- SEPARATOR
+-- ============================================================
+function JholoLib:addSeparator(page)
+    Util.new("Frame", page, {
+        Size             = UDim2.new(0.93, 0, 0, 1),
+        BackgroundColor3 = Theme.Stroke_Sep,
+        BorderSizePixel  = 0,
+    })
+end
+
+-- ============================================================
+-- SECTION HEADER
+-- ============================================================
+function JholoLib:addSection(page, title)
+    local row = Util.new("Frame", page, {
+        Size             = UDim2.new(0.93, 0, 0, 24),
+        BackgroundColor3 = Color3.fromRGB(15, 28, 15),
+        BorderSizePixel  = 0,
+    })
+    Util.corner(row, Theme.Corner_Small)
+
+    Util.new("TextLabel", row, {
+        Size                   = UDim2.new(1, -10, 1, 0),
+        Position               = UDim2.new(0, 8, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Title,
+        Text                   = title,
+        TextSize               = 11,
+        Font                   = Enum.Font.GothamBold,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+    })
+end
+
+-- ============================================================
+-- NOTIFICATION
+-- ============================================================
+function JholoLib:notify(title, message, duration)
+    duration = duration or 4
+
+    local notif = Util.new("Frame", self._notifContainer, {
+        Size             = UDim2.new(1, 0, 0, 60),
+        BackgroundColor3 = Theme.BG_Panel,
+        BorderSizePixel  = 0,
+        BackgroundTransparency = 1,
+    })
+    Util.corner(notif, UDim.new(0, 8))
+    Util.stroke(notif, Theme.Stroke_Elem, 1.5)
+
+    Util.new("TextLabel", notif, {
+        Size                   = UDim2.new(1, -12, 0, 22),
+        Position               = UDim2.new(0, 8, 0, 4),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Title,
+        Text                   = title,
+        TextSize               = 13,
+        Font                   = Enum.Font.GothamBold,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+    })
+    Util.new("TextLabel", notif, {
+        Size                   = UDim2.new(1, -12, 0, 26),
+        Position               = UDim2.new(0, 8, 0, 26),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Muted,
+        Text                   = message,
+        TextSize               = 11,
+        Font                   = Enum.Font.Gotham,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+        TextWrapped            = true,
+    })
+
+    -- Progress bar
+    local bar = Util.new("Frame", notif, {
+        Size             = UDim2.new(1, 0, 0, 3),
+        Position         = UDim2.new(0, 0, 1, -3),
+        BackgroundColor3 = Theme.BG_SliderFill,
+        BorderSizePixel  = 0,
+    })
+    Util.corner(bar, UDim.new(0, 2))
+
+    -- Fade in
+    Util.tween(notif, Theme.TweenInfo_Medium, { BackgroundTransparency = 0 })
+    Util.tween(bar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 0, 3) })
+
+    task.delay(duration, function()
+        Util.tween(notif, Theme.TweenInfo_Medium, { BackgroundTransparency = 1 })
+        task.delay(0.3, function()
+            notif:Destroy()
+        end)
+    end)
+end
+
+-- ============================================================
+-- RETURN
+-- ============================================================
 return JholoLib
