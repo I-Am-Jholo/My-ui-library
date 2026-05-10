@@ -124,7 +124,6 @@ local function snapshotTransparencies(frame)
             _snapshots[obj] = { t = obj.Transparency }
         end
     end
-    -- Also snapshot the frame itself
     _snapshots[frame] = { bg = frame.BackgroundTransparency }
 end
 
@@ -141,12 +140,11 @@ local function fadeDescendants(frame, targetT, tweenInfo)
 end
 
 local function resetTransparencies(frame)
-    -- Restore each object to its original transparency from the snapshot
     for obj, saved in pairs(_snapshots) do
         if obj and obj.Parent then
-            if saved.bg  ~= nil then obj.BackgroundTransparency = saved.bg   end
-            if saved.text ~= nil then obj.TextTransparency      = saved.text end
-            if saved.t   ~= nil then obj.Transparency           = saved.t    end
+            if saved.bg   ~= nil then obj.BackgroundTransparency = saved.bg   end
+            if saved.text ~= nil then obj.TextTransparency       = saved.text end
+            if saved.t    ~= nil then obj.Transparency           = saved.t    end
         end
     end
 end
@@ -429,7 +427,6 @@ function JholoLib:close()
     self._animating = true
     self._visible   = false
 
-    -- Snapshot BEFORE fading so we restore exactly what was there
     snapshotTransparencies(self.MainFrame)
 
     local bgTween = TweenService:Create(self.MainFrame, Theme.TweenInfo_Close, {
@@ -459,7 +456,7 @@ function JholoLib:selectTab(name)
         local active = (tabName == name)
         data.page.Visible = active
         Util.tween(data.btn, Theme.TweenInfo_Fast, {
-            BackgroundColor3 = active and Theme.BG_Active   or Theme.BG_Element,
+            BackgroundColor3 = active and Theme.BG_Active  or Theme.BG_Element,
             TextColor3       = active and Theme.Text_Active or Theme.Text_Muted,
         })
     end
@@ -516,11 +513,512 @@ function JholoLib:addTab(name, icon)
         end
     end)
 
+    -- Auto-select first tab
     if not self._activeTab then
         self:selectTab(name)
     end
 
-    -- Return a Tab object
-    local Tab = { _page = page, _lib = self }
-    return setmetatable(Tab, { __index = Tab })
+    -- ============================================================
+    -- TAB ELEMENT METHODS
+    -- ============================================================
+    local Tab = {}
+
+    -- --------------------------------------------------------
+    -- BUTTON
+    -- --------------------------------------------------------
+    function Tab:addButton(label, callback)
+        callback = callback or function() end
+
+        local btn = Util.new("TextButton", page, {
+            Name             = label .. "Btn",
+            Size             = UDim2.new(0.92, 0, 0, 36),
+            BackgroundColor3 = Theme.BG_Element,
+            TextColor3       = Theme.Text_Primary,
+            Text             = label,
+            TextSize         = 13,
+            Font             = Enum.Font.GothamSemibold,
+            BorderSizePixel  = 0,
+            AutoButtonColor  = false,
+        })
+        Util.corner(btn, Theme.Corner_Elem)
+        Util.stroke(btn, Theme.Stroke_Elem, 1.2)
+
+        btn.MouseEnter:Connect(function()
+            Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_ElementHov })
+        end)
+        btn.MouseLeave:Connect(function()
+            Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Element })
+        end)
+        btn.MouseButton1Click:Connect(function()
+            Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Active })
+            task.delay(0.15, function()
+                Util.tween(btn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Element })
+            end)
+            callback()
+        end)
+
+        return btn
+    end
+
+    -- --------------------------------------------------------
+    -- TOGGLE
+    -- --------------------------------------------------------
+    function Tab:addToggle(label, default, callback)
+        callback = callback or function() end
+        local state = default or false
+
+        local row = Util.new("Frame", page, {
+            Name             = label .. "Toggle",
+            Size             = UDim2.new(0.92, 0, 0, 36),
+            BackgroundColor3 = Theme.BG_Element,
+            BorderSizePixel  = 0,
+        })
+        Util.corner(row, Theme.Corner_Elem)
+        Util.stroke(row, Theme.Stroke_Elem, 1.2)
+
+        Util.new("TextLabel", row, {
+            Name                   = "Label",
+            Size                   = UDim2.new(1, -54, 1, 0),
+            Position               = UDim2.new(0, 10, 0, 0),
+            BackgroundTransparency = 1,
+            TextColor3             = Theme.Text_Label,
+            Text                   = label,
+            TextSize               = 13,
+            Font                   = Enum.Font.Gotham,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+        })
+
+        local track = Util.new("Frame", row, {
+            Name             = "Track",
+            Size             = UDim2.new(0, 36, 0, 20),
+            Position         = UDim2.new(1, -46, 0.5, -10),
+            BackgroundColor3 = state and Theme.BG_Toggle_On or Theme.BG_Toggle_Off,
+            BorderSizePixel  = 0,
+        })
+        Util.corner(track, UDim.new(1, 0))
+
+        local knob = Util.new("Frame", track, {
+            Name             = "Knob",
+            Size             = UDim2.new(0, 14, 0, 14),
+            Position         = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BorderSizePixel  = 0,
+        })
+        Util.corner(knob, UDim.new(1, 0))
+
+        local function updateVisual()
+            Util.tween(track, Theme.TweenInfo_Fast, {
+                BackgroundColor3 = state and Theme.BG_Toggle_On or Theme.BG_Toggle_Off
+            })
+            Util.tween(knob, Theme.TweenInfo_Fast, {
+                Position = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+            })
+        end
+
+        local btn = Util.new("TextButton", row, {
+            Name                   = "Hitbox",
+            Size                   = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text                   = "",
+        })
+        btn.MouseButton1Click:Connect(function()
+            state = not state
+            updateVisual()
+            callback(state)
+        end)
+
+        updateVisual()
+        return row
+    end
+
+    -- --------------------------------------------------------
+    -- SLIDER
+    -- --------------------------------------------------------
+    function Tab:addSlider(label, min, max, default, callback)
+        callback = callback or function() end
+        min      = min     or 0
+        max      = max     or 100
+        local value = math.clamp(default or min, min, max)
+
+        local container = Util.new("Frame", page, {
+            Name             = label .. "Slider",
+            Size             = UDim2.new(0.92, 0, 0, 52),
+            BackgroundColor3 = Theme.BG_Element,
+            BorderSizePixel  = 0,
+        })
+        Util.corner(container, Theme.Corner_Elem)
+        Util.stroke(container, Theme.Stroke_Elem, 1.2)
+        Util.padding(container, 6, 6, 10, 10)
+
+        local topRow = Util.new("Frame", container, {
+            Name                   = "TopRow",
+            Size                   = UDim2.new(1, 0, 0, 18),
+            BackgroundTransparency = 1,
+            BorderSizePixel        = 0,
+        })
+
+        Util.new("TextLabel", topRow, {
+            Name                   = "Label",
+            Size                   = UDim2.new(0.7, 0, 1, 0),
+            BackgroundTransparency = 1,
+            TextColor3             = Theme.Text_Label,
+            Text                   = label,
+            TextSize               = 12,
+            Font                   = Enum.Font.Gotham,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+        })
+
+        local valLabel = Util.new("TextLabel", topRow, {
+            Name                   = "ValLabel",
+            Size                   = UDim2.new(0.3, 0, 1, 0),
+            Position               = UDim2.new(0.7, 0, 0, 0),
+            BackgroundTransparency = 1,
+            TextColor3             = Theme.Text_Active,
+            Text                   = tostring(value),
+            TextSize               = 12,
+            Font                   = Enum.Font.GothamBold,
+            TextXAlignment         = Enum.TextXAlignment.Right,
+        })
+
+        local track = Util.new("Frame", container, {
+            Name             = "Track",
+            Size             = UDim2.new(1, 0, 0, 8),
+            Position         = UDim2.new(0, 0, 1, -14),
+            BackgroundColor3 = Theme.BG_Slider,
+            BorderSizePixel  = 0,
+        })
+        Util.corner(track, UDim.new(1, 0))
+
+        local fill = Util.new("Frame", track, {
+            Name             = "Fill",
+            Size             = UDim2.new((value - min) / (max - min), 0, 1, 0),
+            BackgroundColor3 = Theme.BG_SliderFill,
+            BorderSizePixel  = 0,
+        })
+        Util.corner(fill, UDim.new(1, 0))
+
+        local function setSlider(v)
+            value = math.clamp(math.round(v), min, max)
+            local pct = (value - min) / (max - min)
+            Util.tween(fill, Theme.TweenInfo_Fast, { Size = UDim2.new(pct, 0, 1, 0) })
+            valLabel.Text = tostring(value)
+            callback(value)
+        end
+
+        local dragging = false
+        track.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+            end
+        end)
+        track.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+                local trackPos  = track.AbsolutePosition.X
+                local trackSize = track.AbsoluteSize.X
+                local rel = math.clamp((input.Position.X - trackPos) / trackSize, 0, 1)
+                setSlider(min + rel * (max - min))
+            end
+        end)
+        track.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                local trackPos  = track.AbsolutePosition.X
+                local trackSize = track.AbsoluteSize.X
+                local rel = math.clamp((input.Position.X - trackPos) / trackSize, 0, 1)
+                setSlider(min + rel * (max - min))
+            end
+        end)
+
+        return container
+    end
+
+    -- --------------------------------------------------------
+    -- DROPDOWN
+    -- --------------------------------------------------------
+    function Tab:addDropdown(label, options, callback)
+        callback = callback or function() end
+        options  = options  or {}
+        local selected = options[1] or "Select..."
+        local open     = false
+
+        local wrapper = Util.new("Frame", page, {
+            Name                   = label .. "Dropdown",
+            Size                   = UDim2.new(0.92, 0, 0, 36),
+            BackgroundTransparency = 1,
+            BorderSizePixel        = 0,
+            ClipsDescendants       = false,
+        })
+
+        local header = Util.new("TextButton", wrapper, {
+            Name             = "Header",
+            Size             = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Theme.BG_Element,
+            TextColor3       = Theme.Text_Primary,
+            Text             = label .. ":  " .. selected,
+            TextSize         = 12,
+            Font             = Enum.Font.GothamSemibold,
+            BorderSizePixel  = 0,
+            AutoButtonColor  = false,
+            TextXAlignment   = Enum.TextXAlignment.Left,
+        })
+        Util.corner(header, Theme.Corner_Elem)
+        Util.stroke(header, Theme.Stroke_Elem, 1.2)
+        Util.padding(header, 0, 0, 10, 10)
+
+        local arrow = Util.new("TextLabel", header, {
+            Name                   = "Arrow",
+            Size                   = UDim2.new(0, 20, 1, 0),
+            Position               = UDim2.new(1, -24, 0, 0),
+            BackgroundTransparency = 1,
+            TextColor3             = Theme.Text_Muted,
+            Text                   = "▾",
+            TextSize               = 14,
+            Font                   = Enum.Font.GothamBold,
+        })
+
+        local listFrame = Util.new("Frame", wrapper, {
+            Name             = "List",
+            Size             = UDim2.new(1, 0, 0, 0),
+            Position         = UDim2.new(0, 0, 1, 4),
+            BackgroundColor3 = Theme.BG_Dropdown,
+            BorderSizePixel  = 0,
+            ClipsDescendants = true,
+            ZIndex           = 5,
+            Visible          = false,
+        })
+        Util.corner(listFrame, Theme.Corner_Elem)
+        Util.stroke(listFrame, Theme.Stroke_Input, 1)
+
+        local listLayout = Util.new("UIListLayout", listFrame, {
+            Padding           = UDim.new(0, 2),
+            SortOrder         = Enum.SortOrder.LayoutOrder,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        })
+        Util.padding(listFrame, 4, 4, 0, 0)
+
+        local itemHeight = 28
+        local totalHeight = #options * (itemHeight + 2) + 8
+
+        for _, opt in ipairs(options) do
+            local optBtn = Util.new("TextButton", listFrame, {
+                Name             = opt .. "Opt",
+                Size             = UDim2.new(0.94, 0, 0, itemHeight),
+                BackgroundColor3 = Theme.BG_Element,
+                TextColor3       = Theme.Text_Primary,
+                Text             = opt,
+                TextSize         = 12,
+                Font             = Enum.Font.Gotham,
+                BorderSizePixel  = 0,
+                AutoButtonColor  = false,
+                ZIndex           = 6,
+            })
+            Util.corner(optBtn, Theme.Corner_Small)
+
+            optBtn.MouseEnter:Connect(function()
+                Util.tween(optBtn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_ElementHov })
+            end)
+            optBtn.MouseLeave:Connect(function()
+                Util.tween(optBtn, Theme.TweenInfo_Fast, { BackgroundColor3 = Theme.BG_Element })
+            end)
+            optBtn.MouseButton1Click:Connect(function()
+                selected      = opt
+                header.Text   = label .. ":  " .. selected
+                open          = false
+                arrow.Text    = "▾"
+                listFrame.Visible = false
+                Util.tween(listFrame, Theme.TweenInfo_Fast, { Size = UDim2.new(1, 0, 0, 0) })
+                callback(opt)
+            end)
+        end
+
+        header.MouseButton1Click:Connect(function()
+            open = not open
+            if open then
+                listFrame.Visible = true
+                arrow.Text = "▴"
+                Util.tween(listFrame, Theme.TweenInfo_Medium, { Size = UDim2.new(1, 0, 0, totalHeight) })
+            else
+                arrow.Text = "▾"
+                local t = TweenService:Create(listFrame, Theme.TweenInfo_Fast, { Size = UDim2.new(1, 0, 0, 0) })
+                t:Play()
+                t.Completed:Connect(function() listFrame.Visible = false end)
+            end
+        end)
+
+        return wrapper
+    end
+
+    -- --------------------------------------------------------
+    -- INPUT
+    -- --------------------------------------------------------
+    function Tab:addInput(label, placeholder, callback)
+        callback    = callback    or function() end
+        placeholder = placeholder or ""
+
+        local container = Util.new("Frame", page, {
+            Name             = label .. "Input",
+            Size             = UDim2.new(0.92, 0, 0, 52),
+            BackgroundColor3 = Theme.BG_Element,
+            BorderSizePixel  = 0,
+        })
+        Util.corner(container, Theme.Corner_Elem)
+        Util.stroke(container, Theme.Stroke_Elem, 1.2)
+        Util.padding(container, 6, 6, 10, 10)
+
+        Util.new("TextLabel", container, {
+            Name                   = "Label",
+            Size                   = UDim2.new(1, 0, 0, 16),
+            BackgroundTransparency = 1,
+            TextColor3             = Theme.Text_Label,
+            Text                   = label,
+            TextSize               = 11,
+            Font                   = Enum.Font.Gotham,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+        })
+
+        local box = Util.new("TextBox", container, {
+            Name                   = "Box",
+            Size                   = UDim2.new(1, 0, 0, 22),
+            Position               = UDim2.new(0, 0, 1, -28),
+            BackgroundColor3       = Theme.BG_Input,
+            TextColor3             = Theme.Text_Input,
+            PlaceholderText        = placeholder,
+            PlaceholderColor3      = Theme.Text_Placeholder,
+            Text                   = "",
+            TextSize               = 12,
+            Font                   = Enum.Font.Gotham,
+            BorderSizePixel        = 0,
+            ClearTextOnFocus       = false,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+        })
+        Util.corner(box, Theme.Corner_Small)
+        Util.stroke(box, Theme.Stroke_Input, 1)
+        Util.padding(box, 0, 0, 6, 6)
+
+        box.FocusLost:Connect(function(enterPressed)
+            if enterPressed then
+                callback(box.Text)
+            end
+        end)
+
+        return container
+    end
+
+    -- --------------------------------------------------------
+    -- LABEL / SEPARATOR
+    -- --------------------------------------------------------
+    function Tab:addLabel(text)
+        local lbl = Util.new("TextLabel", page, {
+            Name                   = "Label_" .. text,
+            Size                   = UDim2.new(0.92, 0, 0, 22),
+            BackgroundTransparency = 1,
+            TextColor3             = Theme.Text_Muted,
+            Text                   = text,
+            TextSize               = 11,
+            Font                   = Enum.Font.Gotham,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+        })
+        return lbl
+    end
+
+    function Tab:addSeparator()
+        local sep = Util.new("Frame", page, {
+            Name             = "Separator",
+            Size             = UDim2.new(0.92, 0, 0, 1),
+            BackgroundColor3 = Theme.Stroke_Sep,
+            BorderSizePixel  = 0,
+        })
+        return sep
+    end
+
+    return Tab
 end
+
+-- ============================================================
+-- NOTIFICATION
+-- ============================================================
+function JholoLib:notify(title, message, duration)
+    duration = duration or 4
+
+    local notif = Util.new("Frame", self._notifContainer, {
+        Name             = "Notif",
+        Size             = UDim2.new(1, 0, 0, 0),
+        BackgroundColor3 = Theme.BG_Panel,
+        BorderSizePixel  = 0,
+        ClipsDescendants = true,
+        ZIndex           = 20,
+    })
+    Util.corner(notif, Theme.Corner_Elem)
+    Util.stroke(notif, Theme.Stroke_Main, 1.5)
+    Util.padding(notif, 8, 8, 10, 10)
+
+    local layout = Util.new("UIListLayout", notif, {
+        Padding   = UDim.new(0, 4),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    })
+
+    Util.new("TextLabel", notif, {
+        Name                   = "Title",
+        Size                   = UDim2.new(1, 0, 0, 16),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Title,
+        Text                   = title,
+        TextSize               = 13,
+        Font                   = Enum.Font.GothamBold,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+        ZIndex                 = 21,
+    })
+
+    Util.new("TextLabel", notif, {
+        Name                   = "Message",
+        Size                   = UDim2.new(1, 0, 0, 14),
+        BackgroundTransparency = 1,
+        TextColor3             = Theme.Text_Primary,
+        Text                   = message,
+        TextSize               = 11,
+        Font                   = Enum.Font.Gotham,
+        TextXAlignment         = Enum.TextXAlignment.Left,
+        TextWrapped            = true,
+        ZIndex                 = 21,
+    })
+
+    -- Progress bar
+    local bar = Util.new("Frame", notif, {
+        Name             = "Bar",
+        Size             = UDim2.new(1, 0, 0, 3),
+        BackgroundColor3 = Theme.BG_SliderFill,
+        BorderSizePixel  = 0,
+        ZIndex           = 21,
+    })
+    Util.corner(bar, UDim.new(1, 0))
+
+    -- Slide in
+    Util.tween(notif, Theme.TweenInfo_Medium, { Size = UDim2.new(1, 0, 0, 58) })
+
+    -- Progress bar drain
+    task.delay(0.3, function()
+        Util.tween(bar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 0, 3) })
+    end)
+
+    -- Slide out and destroy
+    task.delay(duration + 0.3, function()
+        local t = TweenService:Create(notif, Theme.TweenInfo_Medium, { Size = UDim2.new(1, 0, 0, 0) })
+        t:Play()
+        t.Completed:Connect(function()
+            notif:Destroy()
+        end)
+    end)
+end
+
+-- ============================================================
+-- RETURN
+-- ============================================================
+return JholoLib
