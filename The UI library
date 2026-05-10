@@ -517,4 +517,10 @@ function JholoLib:addTab(name, icon)
     end)
 
     if not self._activeTab then
-        self:selectTab(nam
+        self:selectTab(name)
+    end
+
+    -- Return a Tab object
+    local Tab = { _page = page, _lib = self }
+    return setmetatable(Tab, { __index = Tab })
+end
